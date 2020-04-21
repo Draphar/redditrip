@@ -1,0 +1,29 @@
+[package]
+name = "redditrip"
+version = "0.1.0"
+authors = ["Joshua Prieth <draphar-code@protonmail.com>"]
+edition = "2018"
+description = "A versatile tool for downloading the linked contents of entire subreddits fast and efficiently"
+repository = "https://github.com/Draphar/redditrip/"
+readme = "README.md"
+keywords = ["reddit", "downloader"]
+categories = ["command-line-utilities"]
+license = "Apache-2.0"
+
+[dependencies]
+log = { version = "0.4", features = ["std"] }
+structopt = { version = "0.3", default-features = false, features = ["color", "wrap_help"] }
+ansi_term = "0.11"
+atty = "0.2"
+time = "0.1"
+hyper = { version = "0.13", default-features = false, features = ["stream"] }
+hyper-tls = "0.4"
+http = "0.2"
+bytes = "0.5"
+tokio = { version = "0.2", features = ["rt-threaded", "macros", "fs", "process"] }
+futures-util = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+lto = "thin"
