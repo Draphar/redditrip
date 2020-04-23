@@ -22,6 +22,39 @@ use serde::Deserialize;
 
 use crate::prelude::*;
 
+/// A subreddit on reddit.
+///
+/// It might seem surprising that the profiles are summarised under a structure called "subreddit",
+/// however reddit actually treats user profiles as subreddits: `/r/u_example` is the same as `/u/example`,
+/// and when posting to one's profile one is really posting to `/r/u_{username}`.
+#[derive(Debug, PartialEq)]
+pub enum Subreddit {
+    /// A subreddit.
+    Subreddit(String),
+
+    /// The profile of a user.
+    Profile(String),
+}
+
+impl Subreddit {
+    /// Converts this subreddit into a string usable as a path.
+    pub fn to_path(&self) -> String {
+        match self {
+            Subreddit::Subreddit(name) => name.to_owned(),
+            Subreddit::Profile(name) => format!("u_{}", name),
+        }
+    }
+}
+
+impl ToString for Subreddit {
+    fn to_string(&self) -> String {
+        match self {
+            Subreddit::Subreddit(name) => format!("/r/{}", name),
+            Subreddit::Profile(name) => format!("/u/{}", name),
+        }
+    }
+}
+
 /// The output of the Pushshift API.
 #[derive(Deserialize, Debug)]
 pub struct PushShift {
@@ -37,6 +70,7 @@ pub struct Post {
     pub title: String,
     pub created_utc: u64,
     pub secure_media: Option<SecureMedia>,
+    pub is_self: bool,
     pub selftext: Option<String>,
 }
 
@@ -66,12 +100,16 @@ pub struct RedditVideo {
 pub async fn api(
     client: &Client,
     parameters: &Parameters,
-    subreddit: &str,
+    subreddit: &Subreddit,
     after: &Option<u64>,
     before: &mut Option<u64>,
 ) -> Result<Vec<Post>> {
     trace!("api({:?}, {:?}, {:?})", subreddit, after, before);
 
+    let subreddit = match subreddit {
+        Subreddit::Subreddit(name) => format!("&subreddit={}", name),
+        Subreddit::Profile(name) => format!("&author={}", name),
+    };
     let after_time = match after {
         Some(time) => format!("&after={}", time),
         None => String::new(),
@@ -83,14 +121,14 @@ pub async fn api(
 
     let url = if parameters.selfposts {
         format!(
-            "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields=created_utc,id,title,domain,url,secure_media,selftext&subreddit={subreddit:}{after:}{before:}",
+            "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields=created_utc,id,title,domain,url,secure_media,is_self,selftext{subreddit:}{after:}{before:}",
             subreddit = subreddit,
             size = parameters.batch_size,
             after = after_time,
             before = before_time)
     } else {
         format!(
-            "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields=created_utc,id,title,domain,url,secure_media&is_self=false&subreddit={subreddit:}{after:}{before:}",
+            "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields=created_utc,id,title,domain,url,secure_media,is_self&is_self=false{subreddit:}{after:}{before:}",
             subreddit = subreddit,
             size = parameters.batch_size,
             after = after_time,

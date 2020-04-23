@@ -25,10 +25,14 @@ use http::Uri;
 use tokio::fs;
 
 use crate::prelude::*;
-use crate::sites::{fetch, file_extension, pushshift, FetchJob};
+use crate::sites::{
+    fetch, file_extension,
+    pushshift::{self, Subreddit},
+    FetchJob,
+};
 
 /// Initiates the subreddit download.
-pub async fn rip(parameters: Parameters, subreddits: Vec<String>) -> Result<()> {
+pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<()> {
     trace!("rip({:?}, {:?})", parameters, subreddits);
 
     let client = Client::new();
@@ -38,18 +42,18 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<String>) -> Result<()> 
     temp_dir.push("index"); // overwritten later by `with_file_name()`
 
     'subreddit_loop: for subreddit in subreddits {
+        let subreddit_name = subreddit.to_string();
         let after = parameters.after;
         let mut before = parameters.before;
         let mut output = parameters.output.to_owned();
-        output.push(&subreddit);
+        output.push(subreddit.to_path());
         if let Err(e) = fs::create_dir_all(&output).await {
             error!("Failed to create directory: {}", e);
             process::exit(1);
         };
         let file_names = get_file_names(&output).await;
-        let self_domain = format!("self.{}", subreddit);
 
-        info!("Started ripping /r/{} to {:?}", subreddit, output);
+        info!("Started ripping {} to {:?}", subreddit_name, output);
 
         output.push("index"); // overwritten later by `with_file_name()`
 
@@ -61,7 +65,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<String>) -> Result<()> 
                 continue 'subreddit_loop;
             };
 
-            debug!("Read {} posts from /r/{:?}", data.len(), subreddit);
+            debug!("Read {} posts from {}", data.len(), subreddit_name);
 
             for mut i in data {
                 let domain = i.domain;
@@ -73,7 +77,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<String>) -> Result<()> 
                         continue;
                     }
                 };
-                let extension = file_extension(&url, parameters.gfycat_type, domain == self_domain);
+                let extension = file_extension(&url, parameters.gfycat_type, i.is_self);
                 // The space required for the ID and file extension
                 let required_len = i.id.len() + 1 + extension.unwrap_or("").len();
                 // Truncate the title if the length is too long
@@ -98,7 +102,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<String>) -> Result<()> 
                 queue.push(fetch(FetchJob {
                     client: &client,
                     parameters: &parameters,
-                    is_selfpost: domain == self_domain,
+                    is_selfpost: i.is_self,
                     domain,
                     url,
                     output: output.with_file_name(file_name),

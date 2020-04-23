@@ -115,7 +115,7 @@ use time::strptime;
 use tokio::runtime::Builder;
 
 use crate::error::{HELP_JSON, HELP_NETWORK};
-use crate::sites::{gfycat::GfycatType, reddit::VRedditMode};
+use crate::sites::{gfycat::GfycatType, pushshift::Subreddit, reddit::VRedditMode};
 
 mod error;
 mod logger;
@@ -241,10 +241,14 @@ pub struct Parameters {
     batch_size: usize,
 
     #[structopt(
-        name = "SUBREDDITS", parse(try_from_str = parse_name),
-        help = "A list of subreddits to download"
+        name = "SUBREDDITS", parse(try_from_str = parse_input),
+        help = "A list of subreddits or profiles to download",
+        long_help = "\
+            The input subreddits or profiles. Unless prefixed with 'u/' or '/u/', \
+            it is assumed that the input is a subreddit.
+        "
     )]
-    subreddits: Vec<String>,
+    subreddits: Vec<Subreddit>,
 
     #[structopt(short, long, help = "Download self posts as text files")]
     selfposts: bool,
@@ -275,17 +279,37 @@ pub struct Parameters {
 
 /// Parses a subreddit name.
 ///
-/// The prefixes `r/` and `/r/` are automatically removed.
+/// The input is assumed to be a subreddit unless prefixed with `u/` or `/u/`.
+/// The prefixes `r/`, `/r/`, `u/` and `/u/` are automatically removed.
 /// An error is returned if the name is invalid.
-fn parse_name(mut name: &str) -> Result<String, String> {
+fn parse_input(name: &str) -> Result<Subreddit, String> {
+    if name.starts_with("/u/") {
+        return verify_name(&name[3..]).map(|_| Subreddit::Profile(name[3..].to_string()));
+    };
+    if name.starts_with("u/") {
+        return verify_name(&name[2..]).map(|_| Subreddit::Profile(name[2..].to_string()));
+    };
     if name.starts_with("/r/") {
-        name = &name[3..];
+        return verify_name(&name[3..]).map(|_| Subreddit::Subreddit(name[3..].to_string()));
     } else if name.starts_with("r/") {
-        name = &name[2..];
+        return verify_name(&name[2..]).map(|_| Subreddit::Subreddit(name[2..].to_string()));
+    };
+
+    verify_name(&name)?;
+
+    Ok(Subreddit::Subreddit(name.to_string()))
+}
+
+/// Verifies a subreddit name.
+fn verify_name(name: &str) -> Result<(), String> {
+    if name.len() > 21 {
+        return Err(String::from(
+            "Subreddit names have a maximum length of 21 characters",
+        ));
     };
 
     for i in name.chars() {
-        if !i.is_alphanumeric() {
+        if !i.is_alphanumeric() && i != '-' && i != '_' {
             return Err(format!(
                 "Subreddit names can only contain alphanumeric characters, '{}' found",
                 i
@@ -293,7 +317,7 @@ fn parse_name(mut name: &str) -> Result<String, String> {
         };
     }
 
-    Ok(name.to_string())
+    Ok(())
 }
 
 /// Parses a date.
@@ -360,7 +384,11 @@ fn main() {
     };
 
     for i in parameters.subreddits.iter() {
-        if i.is_empty() {
+        if let Subreddit::Subreddit(i) = i {
+            if !i.is_empty() {
+                continue;
+            };
+
             let text: Box<dyn Display> = if cfg!(not(windows)) && colors.0 {
                 Box::new(Color::Yellow.paint("[WARN]"))
             } else {
