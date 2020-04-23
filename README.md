@@ -84,13 +84,13 @@ $ strip target/release/redditrip
 
 ## Todo
 
-- support user profiles
-
 - implement a map of already downloaded links, and symlink instead of redownloading
 
 - exclude domains
 
 - filter posts
+
+- title formatting
 
 ### License
 
