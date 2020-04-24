@@ -49,6 +49,8 @@ The following arguments can optionally be used:
 
 - `--selfposts`/`-s`: Download self posts as text files.
 
+- `--exclude <domain>`/`-e <domain>`: Prevents downloading from a domain.
+
 There are a couple of more advanced options described in the `--help` output.
 
 #### Downloading large amounts of data
@@ -85,8 +87,6 @@ $ strip target/release/redditrip
 ## Todo
 
 - implement a map of already downloaded links, and symlink instead of redownloading
-
-- exclude domains
 
 - filter posts
 

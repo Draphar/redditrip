@@ -55,6 +55,9 @@ A versatile tool for downloading the linked contents of entire subreddits fast a
 - `-C`, `--color <'auto'|'always'|'never'>`
  Enable colored output [default: auto]  [possible values: always, auto, never]
 
+- `-e`, `--exclude <domain>`
+ Prevents downloading from a domain. It is practical to use brace expansion syntax for this argument: `--exclude={"i.redd.it","i.imgur.com"}`.
+
 - `--gfycat-type <type>`
  The media type of gfycat videos [default: mp4]  [possible values: mp4, webm]
 
@@ -110,6 +113,7 @@ use std::{
 
 use ansi_term::Color;
 use atty::Stream;
+use http::uri::Uri;
 use structopt::StructOpt;
 use time::strptime;
 use tokio::runtime::Builder;
@@ -254,6 +258,16 @@ pub struct Parameters {
     selfposts: bool,
 
     #[structopt(
+        short, long, parse(try_from_str = parse_domains), multiple = true, value_name = "domain",
+        help = "Do not download from the domain",
+        long_help = "\
+            Prevents downloading from a domain. It is practical to use brace \
+            expansion syntax for this argument: '--exclude={\"i.redd.it\",\"i.imgur.com\"}'.\
+        "
+    )]
+    exclude: Vec<String>,
+
+    #[structopt(
         long, parse(from_str), possible_values = &["mp4", "webm"], default_value = "mp4", value_name = "type",
         help = "The media type of gfycat videos"
     )]
@@ -335,6 +349,19 @@ fn parse_date(input: &str) -> Result<u64, &'static str> {
         .map(|time| time.to_timespec().sec as u64)
         .or_else(|_| u64::from_str(input))
         .map_err(|_| "Invalid date format")
+}
+
+/// Parses an input and returns the domain.
+/// This function automatically detects URL-like input and extracts the host.
+fn parse_domains(input: &str) -> Result<String, String> {
+    // Parse the input as URI to make it more ergonomic
+    Uri::from_str(input)
+        .map_err(|e| format!("{}", e))
+        .and_then(|uri| {
+            uri.host()
+                .map(|uri| uri.to_owned())
+                .ok_or_else(|| String::from("No domain found"))
+        })
 }
 
 /// Parses the command line arguments and runs the tool.

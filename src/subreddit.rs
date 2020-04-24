@@ -69,6 +69,12 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
 
             for mut i in data {
                 let domain = i.domain;
+
+                if parameters.exclude.contains(&domain) {
+                    info!("Skipped {}", i.url);
+                    continue;
+                };
+
                 let url = match i.url.parse::<Uri>() {
                     Ok(value) => value,
                     // This will probably never happen because reddit checks URLs
