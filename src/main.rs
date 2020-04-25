@@ -453,6 +453,10 @@ fn main() {
     match Builder::new().threaded_scheduler().enable_all().build() {
         Ok(mut runtime) => {
             if let Err(e) = runtime.block_on(subreddit::rip(parameters, subreddits)) {
+                if e.source().is_none() {
+                    error!("Error: {}", e);
+                    process::exit(3);
+                };
                 let e = e.into_source().unwrap();
 
                 let e = match e.downcast::<hyper::Error>() {
