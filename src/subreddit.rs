@@ -18,7 +18,7 @@
 Fetches posts from a subreddit.
 */
 
-use std::{collections::HashSet, env, ffi::OsString, future::Future, path::Path, process};
+use std::{collections::HashSet, env, future::Future, path::Path, process};
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::Uri;
@@ -51,7 +51,17 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
             error!("Failed to create directory: {}", e);
             process::exit(1);
         };
-        let file_names = get_file_names(&output).await;
+        let post_ids = match if parameters.update {
+            get_post_ids(&output).await
+        } else {
+            Ok(HashSet::new())
+        } {
+            Ok(set) => set,
+            Err(e) => {
+                warn!("Failed to read contents of {:?}: {}", output, e);
+                HashSet::new()
+            }
+        };
 
         info!("Started ripping {} to {:?}", subreddit_name, output);
 
@@ -98,9 +108,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
                     file_name += extension;
                 };
 
-                if parameters.update
-                    && file_names.contains(AsRef::<std::ffi::OsStr>::as_ref(file_name.as_str()))
-                {
+                if parameters.update && post_ids.contains(&i.id) {
                     info!("File already exists: {:?}", file_name);
                     continue 'subreddit_loop;
                 };
@@ -135,18 +143,28 @@ async fn run_jobs(queue: &mut FuturesUnordered<impl Future<Output = (FetchJob<'_
     }
 }
 
-/// Gets a set of file names in the directory.
-async fn get_file_names(directory: &Path) -> HashSet<OsString> {
-    let mut file_names = HashSet::new();
-    let mut stream = fs::read_dir(directory).await.unwrap();
+/// Gets a set of item IDs in the directory.
+/// Only detects file names in the format `{id}-*`.
+async fn get_post_ids(directory: &Path) -> Result<HashSet<String>> {
+    let mut post_ids = HashSet::new();
+    let mut stream = fs::read_dir(directory).await?;
 
     while let Some(entry) = stream.next().await {
-        if let Ok(entry) = entry {
-            file_names.insert(entry.file_name());
+        // Assume that the program generates only valid UTF-8
+        if let Some(mut entry) = entry
+            .ok()
+            .map(|a| a.file_name())
+            .and_then(|name| name.into_string().ok())
+        {
+            // Extract the ID from the file name
+            if let Some(index) = entry.find('-') {
+                entry.truncate(index);
+                post_ids.insert(entry);
+            };
         };
     }
 
-    file_names
+    Ok(post_ids)
 }
 
 /// Replaces illegal characters for file names with `_`.
