@@ -90,6 +90,36 @@ pub struct RedditVideo {
     pub height: u64,
 }
 
+/// Creates an URL for the Pushshift API which can later be reused.
+pub fn build_api_url(parameters: &Parameters) -> String {
+    format!(
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields=created_utc,id,title,domain,url,secure_media,is_self{selfposts:}{domains:}{after:}",
+        size = parameters.batch_size,
+        selfposts = if parameters.selfposts {
+            ",selftext"
+        } else {
+            "&is_self=false"
+        },
+        domains = if parameters.exclude.is_empty() {
+            String::new()
+        } else {
+            parameters.exclude.iter().enumerate().fold(String::from("&domain="), |mut accumulator,(i, domain)| {
+                if i != 0 {
+                    accumulator.push(',');
+                };
+                accumulator.push('!');
+                accumulator.push_str(domain);
+
+                accumulator
+            })
+        },
+        after = match parameters.after {
+            Some(time) => format!("&after={}", time),
+            None => String::new(),
+        }
+    )
+}
+
 /// Retrieves data from the Pushshift API.
 ///
 /// The `before` parameter is automatically set by the function:
@@ -97,43 +127,14 @@ pub struct RedditVideo {
 /// has a length of `0`, the available data was read completely.
 ///
 /// The data is always returned from new to old.
-pub async fn api(
-    client: &Client,
-    parameters: &Parameters,
-    subreddit: &Subreddit,
-    after: &Option<u64>,
-    before: &mut Option<u64>,
-) -> Result<Vec<Post>> {
-    trace!("api({:?}, {:?}, {:?})", subreddit, after, before);
+pub async fn api(client: &Client, url: &str, before: &mut Option<u64>) -> Result<Vec<Post>> {
+    trace!("api({:?}, {:?})", url, before);
 
-    let subreddit = match subreddit {
-        Subreddit::Subreddit(name) => format!("&subreddit={}", name),
-        Subreddit::Profile(name) => format!("&author={}", name),
-    };
-    let after_time = match after {
-        Some(time) => format!("&after={}", time),
-        None => String::new(),
-    };
-    let before_time = match before {
+    let mut url = url.to_owned();
+    url.push_str(&match before {
         Some(time) => format!("&before={}", time),
         None => String::new(),
-    };
-
-    let url = if parameters.selfposts {
-        format!(
-            "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields=created_utc,id,title,domain,url,secure_media,is_self,selftext{subreddit:}{after:}{before:}",
-            subreddit = subreddit,
-            size = parameters.batch_size,
-            after = after_time,
-            before = before_time)
-    } else {
-        format!(
-            "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields=created_utc,id,title,domain,url,secure_media,is_self&is_self=false{subreddit:}{after:}{before:}",
-            subreddit = subreddit,
-            size = parameters.batch_size,
-            after = after_time,
-            before = before_time)
-    };
+    });
 
     let response = client
         .request(
@@ -164,4 +165,26 @@ pub async fn api(
     };
 
     Ok(value)
+}
+
+#[test]
+fn test_build_api_url() {
+    use structopt::StructOpt;
+
+    assert_eq!(
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=created_utc,id,title,domain,url,secure_media,is_self&is_self=false",
+        build_api_url(&Parameters::from_iter(&["test"]))
+    );
+    assert_eq!(
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=created_utc,id,title,domain,url,secure_media,is_self,selftext",
+        build_api_url(&Parameters::from_iter(&["test", "--batch-size", "0", "--selfposts"]))
+    );
+    assert_eq!(
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=created_utc,id,title,domain,url,secure_media,is_self&is_self=false&domain=!domain1,!domain2",
+        build_api_url(&Parameters::from_iter(&["test", "--exclude", "domain1", "--exclude", "domain2"]))
+    );
+    assert_eq!(
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=created_utc,id,title,domain,url,secure_media,is_self&is_self=false&after=946684800",
+        build_api_url(&Parameters::from_iter(&["test", "--after", "2000-1-1"]))
+    );
 }

@@ -145,6 +145,7 @@ mod prelude {
         Run `cargo install redditrip --force` to update. \
     "
 )]
+// When changing any of the default values, also edit the `test_build_api_url()` test
 pub struct Parameters {
     #[structopt(short, long, conflicts_with("quiet"), help = "Enable verbose output")]
     verbose: bool,

@@ -38,19 +38,29 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
     let client = Client::new();
     let mut temp_dir = env::temp_dir();
     let mut queue = FuturesUnordered::new();
+    let api_url = pushshift::build_api_url(&parameters);
 
     temp_dir.push("index"); // overwritten later by `with_file_name()`
 
     'subreddit_loop: for subreddit in subreddits {
         let subreddit_name = subreddit.to_string();
-        let after = parameters.after;
         let mut before = parameters.before;
+        let api_url = format!(
+            "{}{}",
+            api_url,
+            match &subreddit {
+                Subreddit::Subreddit(name) => format!("&subreddit={}", name),
+                Subreddit::Profile(name) => format!("&author={}", name),
+            }
+        );
+
         let mut output = parameters.output.to_owned();
         output.push(subreddit.to_path());
         if let Err(e) = fs::create_dir_all(&output).await {
             error!("Failed to create directory: {}", e);
             process::exit(1);
         };
+
         let post_ids = match if parameters.update {
             get_post_ids(&output).await
         } else {
@@ -68,8 +78,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
         output.push("index"); // overwritten later by `with_file_name()`
 
         loop {
-            let data =
-                pushshift::api(&client, &parameters, &subreddit, &after, &mut before).await?;
+            let data = pushshift::api(&client, &api_url, &mut before).await?;
 
             if data.is_empty() {
                 continue 'subreddit_loop;
