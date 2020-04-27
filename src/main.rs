@@ -115,7 +115,7 @@ use ansi_term::Color;
 use atty::Stream;
 use http::uri::Uri;
 use structopt::StructOpt;
-use time::strptime;
+use time::{strftime, strptime, Timespec};
 use tokio::runtime::Builder;
 
 use crate::error::{HELP_JSON, HELP_NETWORK};
@@ -345,7 +345,7 @@ fn verify_name(name: &str) -> Result<(), String> {
 ///
 /// in that order.
 fn parse_date(input: &str) -> Result<u64, &'static str> {
-    strptime(input, "%F%t%T")
+    strptime(input, "%F %T")
         .or_else(|_| strptime(input, "%F"))
         .map(|time| time.to_timespec().sec as u64)
         .or_else(|_| u64::from_str(input))
@@ -447,6 +447,19 @@ fn main() {
                 warn!("Failed to start ffmpeg: {}\n\nNote: this is not an error, but you should make sure that ffmpeg is properly available", e);
             };
         };
+    };
+
+    fn format_time(time: u64) -> String {
+        let sec = time as i64;
+        strftime("%c", &time::at_utc(Timespec { sec, nsec: 0 })).unwrap()
+    }
+
+    if parameters.after.is_some() && parameters.before.is_some() {
+        info!("Downloading posts between {} and {}", format_time(parameters.after.unwrap()), format_time(parameters.before.unwrap()));
+    } else if let Some(time) = parameters.after {
+        info!("Downloading posts after {}", format_time(time));
+    } else if let Some(time) = parameters.before {
+        info!("Downloading posts before {}", format_time(time));
     };
 
     let subreddits = mem::replace(&mut parameters.subreddits, Vec::new());
