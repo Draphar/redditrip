@@ -19,6 +19,7 @@ Utilities for retrieving data from the Pushshift API.
 */
 
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::prelude::*;
 
@@ -64,13 +65,8 @@ pub struct PushShift {
 /// A post on reddit.
 #[derive(Deserialize, Debug)]
 pub struct Post {
-    pub id: String,
     pub domain: String,
-    pub url: String,
-    pub title: String,
-    pub created_utc: u64,
     pub secure_media: Option<SecureMedia>,
-    pub is_self: bool,
     pub selftext: Option<String>,
 }
 
@@ -93,8 +89,16 @@ pub struct RedditVideo {
 /// Creates an URL for the Pushshift API which can later be reused.
 pub fn build_api_url(parameters: &Parameters) -> String {
     format!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields=created_utc,id,title,domain,url,secure_media,is_self{selfposts:}{domains:}{after:}",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields={fields:}{selfposts:}{domains:}{after:}",
         size = parameters.batch_size,
+        fields = {
+            let mut fields = String::from("id,created_utc,domain,url,secure_media,is_self");
+            for i in parameters.title.iter() {
+                fields.push(',');
+                fields.push_str(i);
+            };
+            fields
+        },
         selfposts = if parameters.selfposts {
             ",selftext"
         } else {
@@ -127,7 +131,7 @@ pub fn build_api_url(parameters: &Parameters) -> String {
 /// has a length of `0`, the available data was read completely.
 ///
 /// The data is always returned from new to old.
-pub async fn api(client: &Client, url: &str, before: &mut Option<u64>) -> Result<Vec<Post>> {
+pub async fn api(client: &Client, url: &str, before: &mut Option<u64>) -> Result<Vec<Value>> {
     trace!("api({:?}, {:?})", url, before);
 
     let mut url = url.to_owned();
@@ -154,17 +158,25 @@ pub async fn api(client: &Client, url: &str, before: &mut Option<u64>) -> Result
 
     debug!("Received {} from {:?}", response.status(), url);
 
-    let value: PushShift = to_json(response).await?;
-    let value = value.data;
-
-    // Update the `before` parameter.
-    // The next call automatically retrieves the next batch of data.
-    // This is correct even when using `after` because the `sort_type` is set to `desc` (descending).
-    if let Some(post) = value.last() {
-        *before = Some(post.created_utc);
+    let err = || {
+        Error::new(format!(
+            "Unexpectedly received invalid JSON\n\n{}",
+            HELP_JSON
+        ))
     };
+    let mut value: Value = to_json(response).await?;
+    if let Value::Array(posts) = value["data"].take() {
+        // Update the `before` parameter.
+        // The next call automatically retrieves the next batch of data.
+        // This is correct even when using `after` because the `sort_type` is set to `desc` (descending).
+        if let Some(post) = posts.last() {
+            *before = Some(post["created_utc"].as_u64().ok_or_else(err)?);
+        };
 
-    Ok(value)
+        Ok(posts)
+    } else {
+        Err(err())
+    }
 }
 
 #[test]
@@ -172,19 +184,23 @@ fn test_build_api_url() {
     use structopt::StructOpt;
 
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=created_utc,id,title,domain,url,secure_media,is_self&is_self=false",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false",
         build_api_url(&Parameters::from_iter(&["test"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=created_utc,id,title,domain,url,secure_media,is_self,selftext",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=id,created_utc,domain,url,secure_media,is_self,id,title,selftext",
         build_api_url(&Parameters::from_iter(&["test", "--batch-size", "0", "--selfposts"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=created_utc,id,title,domain,url,secure_media,is_self&is_self=false&domain=!domain1,!domain2",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&domain=!domain1,!domain2",
         build_api_url(&Parameters::from_iter(&["test", "--exclude", "domain1", "--exclude", "domain2"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=created_utc,id,title,domain,url,secure_media,is_self&is_self=false&after=946684800",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&after=946684800",
         build_api_url(&Parameters::from_iter(&["test", "--after", "2000-1-1"]))
+    );
+    assert_eq!(
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=id,created_utc,domain,url,secure_media,is_self,author,full_link,id&is_self=false",
+        build_api_url(&Parameters::from_iter(&["test", "--title", "{id}{author}{full_link}"]))
     );
 }

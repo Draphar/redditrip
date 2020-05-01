@@ -18,11 +18,11 @@
 Fetches posts from a subreddit.
 */
 
-use std::{collections::HashSet, env, future::Future, path::Path, process};
+use std::{env, future::Future, io::ErrorKind, path::Path, process};
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::Uri;
-use tokio::fs;
+use tokio::{fs, io};
 
 use crate::prelude::*;
 use crate::sites::{
@@ -30,6 +30,8 @@ use crate::sites::{
     pushshift::{self, Subreddit},
     FetchJob,
 };
+
+const UPDATE_FILE_NAME: &'static str = ".redditrip";
 
 /// Initiates the subreddit download.
 pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<()> {
@@ -45,6 +47,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
     'subreddit_loop: for subreddit in subreddits {
         let subreddit_name = subreddit.to_string();
         let mut before = parameters.before;
+        let mut updated = false;
         let api_url = format!(
             "{}{}",
             api_url,
@@ -61,21 +64,26 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
             process::exit(1);
         };
 
-        let post_ids = match if parameters.update {
-            get_post_ids(&output).await
-        } else {
-            Ok(HashSet::new())
-        } {
-            Ok(set) => set,
+        output.push("index"); // overwritten later by `with_file_name()`
+
+        // The ID of the newest file in the directory
+        let newest_id = match read_update_file(&output).await {
+            Ok(value) => Some(value),
+            Err(ref e) if e.kind() == ErrorKind::NotFound => None,
             Err(e) => {
-                warn!("Failed to read contents of {:?}: {}", output, e);
-                HashSet::new()
+                warn!(
+                    "Failed to open the update file `.redditrip`, even though it is present: {}",
+                    e
+                );
+                None
             }
         };
 
-        info!("Started ripping {} to {:?}", subreddit_name, output);
-
-        output.push("index"); // overwritten later by `with_file_name()`
+        info!(
+            "Started ripping {} to {:?}",
+            subreddit_name,
+            output.parent().unwrap()
+        );
 
         loop {
             let data = pushshift::api(&client, &api_url, &mut before).await?;
@@ -87,51 +95,69 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
             debug!("Read {} posts from {}", data.len(), subreddit_name);
 
             for mut i in data {
-                let domain = i.domain;
+                if let Some(id) = i["id"].as_str() {
+                    if parameters.update && Some(id) == newest_id.as_ref().map(|s| s.as_str()) {
+                        info!("Post with ID {:?} already exists", id);
+                        run_jobs(&mut queue).await;
+                        continue 'subreddit_loop;
+                    };
 
-                if parameters.exclude.contains(&domain) {
-                    info!("Skipped {}", i.url);
+                    if !updated {
+                        if let Err(e) = create_update_file(&output, id).await {
+                            warn!("Failed to create update file `{}`: {}\n    Using the '--update' argument will not work", UPDATE_FILE_NAME, e);
+                        } else {
+                            debug!("Created update file `{}`", UPDATE_FILE_NAME);
+                        };
+                        updated = true;
+                    };
+                } else {
+                    warn!("Malformed JSON response");
                     continue;
                 };
 
-                let url = match i.url.parse::<Uri>() {
+                let url = if let Some(url) = i["url"].as_str() {
+                    match url.parse::<Uri>() {
+                        Ok(value) => value,
+                        Err(e) => {
+                            warn!("Invalid URL {:?}: {}", url, e);
+                            continue;
+                        }
+                    }
+                } else {
+                    warn!("Malformed JSON response");
+                    continue;
+                };
+                let is_self = if let Some(value) = i["is_self"].as_bool() {
+                    value
+                } else {
+                    warn!("Malformed JSON response");
+                    continue;
+                };
+                let extension = file_extension(&url, parameters.gfycat_type, is_self).unwrap_or("");
+
+                let mut title = parameters
+                    .title
+                    .format(&mut i, parameters.max_file_name_length - extension.len());
+                title.push_str(extension);
+
+                let post: pushshift::Post = match serde_json::from_value(i) {
                     Ok(value) => value,
-                    // This will probably never happen because reddit checks URLs
                     Err(e) => {
-                        warn!("Invalid URL {:?}: {}", i.url, e);
+                        warn!("Malformed JSON response: {}", e);
                         continue;
                     }
-                };
-                let extension = file_extension(&url, parameters.gfycat_type, i.is_self);
-                // The space required for the ID and file extension
-                let required_len = i.id.len() + 1 + extension.unwrap_or("").len();
-                // Truncate the title if the length is too long
-                i.title
-                    .truncate(parameters.max_file_name_length - required_len);
-
-                let mut file_name = String::with_capacity(required_len + i.title.len());
-                file_name += &i.id;
-                file_name.push('-');
-                clean_title(&i.title, &mut file_name);
-                if let Some(extension) = extension {
-                    file_name += extension;
-                };
-
-                if parameters.update && post_ids.contains(&i.id) {
-                    info!("File already exists: {:?}", file_name);
-                    continue 'subreddit_loop;
                 };
 
                 queue.push(fetch(FetchJob {
                     client: &client,
                     parameters: &parameters,
-                    is_selfpost: i.is_self,
-                    domain,
+                    is_selfpost: is_self,
+                    domain: post.domain,
                     url,
-                    output: output.with_file_name(file_name),
+                    output: output.with_file_name(title),
                     temp_dir: &temp_dir,
-                    text: i.selftext,
-                    media: i.secure_media,
+                    text: post.selftext,
+                    media: post.secure_media,
                 }));
             }
 
@@ -152,37 +178,39 @@ async fn run_jobs(queue: &mut FuturesUnordered<impl Future<Output = (FetchJob<'_
     }
 }
 
-/// Gets a set of item IDs in the directory.
-/// Only detects file names in the format `{id}-*`.
-async fn get_post_ids(directory: &Path) -> Result<HashSet<String>> {
-    let mut post_ids = HashSet::new();
-    let mut stream = fs::read_dir(directory).await?;
+/// Returns the most recent post ID from a marker file in the directory.
+async fn read_update_file(directory: &Path) -> io::Result<String> {
+    let file = directory.with_file_name(UPDATE_FILE_NAME);
+    let mut data = fs::read_to_string(&file).await?;
+    let line = if let Some(index) = data.find('\n') {
+        data.truncate(index);
+        data
+    } else {
+        data
+    };
 
-    while let Some(entry) = stream.next().await {
-        // Assume that the program generates only valid UTF-8
-        if let Some(mut entry) = entry
-            .ok()
-            .map(|a| a.file_name())
-            .and_then(|name| name.into_string().ok())
-        {
-            // Extract the ID from the file name
-            if let Some(index) = entry.find('-') {
-                entry.truncate(index);
-                post_ids.insert(entry);
-            };
-        };
-    }
-
-    Ok(post_ids)
+    Ok(line)
 }
 
-/// Replaces illegal characters for file names with `_`.
-/// This method always writes exactly `title.len()` bytes.
-fn clean_title(title: &str, output: &mut String) {
-    for i in title.chars() {
-        output.push(match i {
-            '/' | '?' | '<' | '>' | '\\' | ':' | '*' | '"' => '_',
-            other => other,
-        });
-    }
+/// Creates a new update containing the content.
+async fn create_update_file(directory: &Path, content: &str) -> io::Result<()> {
+    let file = directory.with_file_name(UPDATE_FILE_NAME);
+    let mut content = content.as_bytes().to_vec();
+    content.extend_from_slice(b"\n# This is a file generated by redditrip to keep track of the already downloaded files.\n# Modify at your own risk!");
+    fs::write(&file, content).await
+}
+
+#[tokio::test]
+#[allow(unused_must_use)]
+async fn update_file() {
+    let mut directory = env::temp_dir();
+    directory.push("index");
+    {
+        create_update_file(&directory, "Lorem").await.unwrap();
+        create_update_file(&directory, "ipsum").await.unwrap();
+        create_update_file(&directory, "dolor").await.unwrap();
+    };
+    assert_eq!("dolor", read_update_file(&directory).await.unwrap());
+
+    fs::remove_file(directory.with_file_name(UPDATE_FILE_NAME)).await;
 }

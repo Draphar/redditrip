@@ -35,6 +35,9 @@ A versatile tool for downloading the linked contents of entire subreddits fast a
 - `-f`, `--force`
  Whether to force the download from unsupported domains by simpling writing whatever is on the page to disk.
 
+- `--formatting-fields`
+ Display the possible placeholders for the '--title' argument. Note that not all fields are set for every post.
+
 - `-s`, `--selfposts`
  Download self posts as text files
 
@@ -62,11 +65,13 @@ A versatile tool for downloading the linked contents of entire subreddits fast a
  The media type of gfycat videos [default: mp4]  [possible values: mp4, webm]
 
 - `--max-file-name-length <length>`
- Some systems impose restrictions to file names. If you run into a "File name
-            too long" error, look up what the maximum allowed length on your system is
-            and pass it with this parameter.  [default: 255]
+ Some systems impose restrictions to file names. If you run into a "File name too long" error, look up what the maximum allowed length on your system is and pass it with this parameter.  [default: 255]
+
 - `-o, --output <directory>`
  The output directory [default: .]
+
+- `-t`, `--title <title>`
+ This argument takes a string containing placeholders which are replaced with the values of each respective post. All possible placeholders can be retrieved by running the program with '--formatting-fields'. The placeholders are enclosed in curly braces. For example: '--title "{author}_{title}-{created_utc}"'. Note that not all fields are set for every post. Unset placeholder values are replaced by an empty string. Also note that the formatted string is always followed by the file extension, if any. The file name length  is also limited on most file systems. The '--max-file-name-length' argument is used to truncate the generated name. It is moreover advised to include `{id}` in the title to prevent collisions. [default: {id}-{title}]
 
 - `--vreddit-mode <mode>`
  This setting specifies how videos are downloaded from `v.redd.it`. The value 'no-audio' downloads videos without audio. The value 'ffmpeg' downloads video and audio separately and combines them using the `ffmpeg` command, which must be installed locally. Any other value must be a valid URL, in which the string `{}` is replaced by the video ID, that is the part after that comes after `v.redd.it/` in URLs. [default: no-audio]
@@ -87,6 +92,7 @@ A versatile tool for downloading the linked contents of entire subreddits fast a
 
 #![forbid(unsafe_code)]
 
+extern crate aho_corasick;
 extern crate ansi_term; // already required by structopt
 extern crate atty; // already required by structopt
 extern crate bytes; // already required by hyper
@@ -120,12 +126,14 @@ use tokio::runtime::Builder;
 
 use crate::error::{HELP_JSON, HELP_NETWORK};
 use crate::sites::{gfycat::GfycatType, pushshift::Subreddit, reddit::VRedditMode};
+use crate::title::Title;
 
 mod error;
 mod logger;
 mod net;
 mod sites;
 mod subreddit;
+mod title;
 
 mod prelude {
     pub use crate::error::*;
@@ -290,6 +298,37 @@ pub struct Parameters {
         "
     )]
     vreddit_mode: VRedditMode,
+
+    #[structopt(
+        long,
+        help = "Display the available formatting fields",
+        long_help = "\
+            Display the possible placeholders for the '--title' argument. Note \
+            that not all fields are set for every post.\
+        "
+    )]
+    formatting_fields: bool,
+
+    #[structopt(
+        short, long, parse(from_str = Title::new), default_value = "{id}-{title}",
+        help = "Use a custom title format",
+        long_help = "\
+            This argument takes a string containing placeholders which \
+            are replaced with the values of each respective post. All \
+            possible placeholders can be retrieved by running the program \
+            with '--formatting-fields'. The placeholders are enclosed \
+            in curly braces. For example: '--title \"{author}_{title}-\
+            {created_utc}\"'. Note that not all fields are set for every \
+            post. Unset placeholder values are replaced by an empty string.
+\
+            Also note that the formatted string is always followed by the \
+            file extension, if any. The file name length  is also limited \
+            on most file systems. The '--max-file-name-length' argument \
+            is used to truncate the generated name. It is moreover \
+            advised to include `{id}` in the title to prevent collisions.\
+        "
+    )]
+    title: Title,
 }
 
 /// Parses a subreddit name.
@@ -374,6 +413,11 @@ fn main() {
         return;
     };
 
+    if parameters.formatting_fields {
+        print!("{}", title::formatting_help());
+        return;
+    };
+
     let colors = match parameters.color.as_ref() {
         "always" => (true, true),
         "never" => (false, false),
@@ -411,18 +455,27 @@ fn main() {
         return;
     };
 
+    if !parameters.title.utilizes_id() {
+        let warn: Box<dyn Display> = if cfg!(not(windows)) && colors.0 {
+            Box::new(Color::Yellow.paint("[WARN]"))
+        } else {
+            Box::new("[WARN]")
+        };
+        println!("{}    The title formatting string does not contain `{{id}}`. File name collisions may occur.", warn);
+    };
+
     for i in parameters.subreddits.iter() {
         if let Subreddit::Subreddit(i) = i {
             if !i.is_empty() {
                 continue;
             };
 
-            let text: Box<dyn Display> = if cfg!(not(windows)) && colors.0 {
+            let warn: Box<dyn Display> = if cfg!(not(windows)) && colors.0 {
                 Box::new(Color::Yellow.paint("[WARN]"))
             } else {
                 Box::new("[WARN]")
             };
-            println!("{}    An empty argument was passed, the result will be that the entirety of reddit will be downloaded. Do you want to continue?\n[Y/n]", text);
+            println!("{}    An empty argument was passed, the result will be that the entirety of reddit will be downloaded. Do you want to continue?\n[Y/n]", warn);
             let mut buf = String::new();
             stdin().read_line(&mut buf).unwrap();
             let input = buf.to_lowercase();
@@ -455,7 +508,11 @@ fn main() {
     }
 
     if parameters.after.is_some() && parameters.before.is_some() {
-        info!("Downloading posts between {} and {}", format_time(parameters.after.unwrap()), format_time(parameters.before.unwrap()));
+        info!(
+            "Downloading posts between {} and {}",
+            format_time(parameters.after.unwrap()),
+            format_time(parameters.before.unwrap())
+        );
     } else if let Some(time) = parameters.after {
         info!("Downloading posts after {}", format_time(time));
     } else if let Some(time) = parameters.before {

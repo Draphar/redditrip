@@ -19,6 +19,8 @@ Note that this is not the tool for the job if you want to retrieve information a
 
 - fast (because of an asynchronous job queue, powered by the fantastic [`tokio`])
 
+- custom title formatting
+
 - (for the Rust programmers) `#![forbid(unsafe_code)]`
 
 ## Installation
@@ -51,6 +53,8 @@ The following arguments can optionally be used:
 
 - `--exclude <domain>`/`-e <domain>`: Prevents downloading from a domain.
 
+- `--title <formatter>`: Use a custom title format.
+
 There are a couple of more advanced options described in the `--help` output.
 
 #### Downloading large amounts of data
@@ -58,6 +62,37 @@ There are a couple of more advanced options described in the `--help` output.
 It is recommended to use `-q`/`--quiet` to see only the individual errors.
 You should also use a high `--batch-size`, and subsequently a high `ulimit -n` (open files) because every download job takes >= 1 open file descriptor.
 Finally, if you expect to run into a lot of unsupported sites, which can directly be saved, use `--force`.
+
+### Title formatting
+
+`redditrip` supports custom titles. To use this feature, a formatting string must be provided with `--title <formatter>`.
+Placeholders are the field names enclosed in curly brackets. For example: `--title "{id}-{author}_{title}`.
+The file extension is always appended to the title.
+
+The available fields can be queried by running the program with `--formatting-fields`.
+They correspond to data from the Pushshift API.
+An rough overview can be seen on https://api.pushshift.io/reddit/search/submission?size=1, though not all fields can be present.
+
+Characters which are not allowed in file names are replaced with `_`.
+
+Because reddit titles alone can be longer than the maximum file name length on many systems, one should know about `--max-file-name-length <length>`,
+which is used to truncate file names.
+
+Not using the `{id}` placeholder can lead to file name collisions, thus it is advised to always include it somewhere in the formatter,
+preferably at the front so it is not at the risk of being truncated.
+
+The most useful placeholders are:
+
+| Placeholder | Type | Purpose |
+| :---------: | ---- | ------- |
+| `{id}` | string | The post ID |
+| `{title}` | string | The post title |
+| `{author}` | string | The post author name |
+| `{created_utc}` | integer | The UNIX timestamp when the post was created |
+| `{link_flair_text}` | string | The text of the post flair |
+| `{author_flair_text}` | string | The text of the author flair |
+| `{domain}` | string | The domain of the link the post points to |
+| `{over_18}` | bool | Whether the post is NSFW |
 
 ## Compiling
 
@@ -89,8 +124,6 @@ $ strip target/release/redditrip
 - implement a map of already downloaded links, and symlink instead of redownloading
 
 - filter posts
-
-- title formatting
 
 ### License
 
