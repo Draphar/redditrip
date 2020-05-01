@@ -65,7 +65,7 @@ A versatile tool for downloading the linked contents of entire subreddits fast a
  The media type of gfycat videos [default: mp4]  [possible values: mp4, webm]
 
 - `--max-file-name-length <length>`
- Some systems impose restrictions to file names. If you run into a "File name too long" error, look up what the maximum allowed length on your system is and pass it with this parameter.  [default: 255]
+ Some systems impose restrictions to file names. If you run into a "File name too long" error, look up what the maximum allowed length on your system is and pass it with this parameter. The value of this argument is in bytes, not characters. [default: 255]
 
 - `-o, --output <directory>`
  The output directory [default: .]
@@ -177,11 +177,12 @@ pub struct Parameters {
         long,
         value_name = "length",
         default_value = "255",
-        help = "Limit the maximum file name length",
+        help = "The maximum file name length in bytes",
         long_help = "\
             Some systems impose restrictions to file names. If you run \
             into a \"File name too long\" error, look up what the maximum \
             allowed length on your system is and pass it with this parameter. \
+            The value of this argument is in bytes, not characters.\
         "
     )]
     max_file_name_length: usize,
