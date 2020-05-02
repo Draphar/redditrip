@@ -179,7 +179,6 @@ pub fn supported_domains() -> &'static str {
     "\
 i.redd.it
 v.redd.it
-reddit.com
 i.imgur.com
 imgur.com
 gfycat.com
