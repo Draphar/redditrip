@@ -63,10 +63,10 @@ It is recommended to use `-q`/`--quiet` to see only the individual errors.
 You should also use a high `--batch-size`, and subsequently a high `ulimit -n` (open files) because every download job takes >= 1 open file descriptor.
 Finally, if you expect to run into a lot of unsupported sites, which can directly be saved, use `--force`.
 
-### Title formatting
+#### Title formatting
 
 `redditrip` supports custom titles. To use this feature, a formatting string must be provided with `--title <formatter>`.
-Placeholders are the field names enclosed in curly brackets. For example: `--title "{id}-{author}_{title}`.
+Placeholders are the field names enclosed in curly brackets. For example: `--title "{id}-{author}_{title}"`.
 The file extension is always appended to the title.
 
 The available fields can be queried by running the program with `--formatting-fields`.
