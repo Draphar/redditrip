@@ -127,6 +127,7 @@ use tokio::runtime::Builder;
 use crate::error::{HELP_JSON, HELP_NETWORK};
 use crate::sites::{gfycat::GfycatType, pushshift::Subreddit, reddit::VRedditMode};
 use crate::title::Title;
+use logger::color_stdout;
 
 mod error;
 mod logger;
@@ -511,13 +512,19 @@ fn main() {
     if parameters.after.is_some() && parameters.before.is_some() {
         info!(
             "Downloading posts between {} and {}",
-            format_time(parameters.after.unwrap()),
-            format_time(parameters.before.unwrap())
+            color_stdout(&format_time(parameters.after.unwrap())),
+            color_stdout(&format_time(parameters.before.unwrap()))
         );
     } else if let Some(time) = parameters.after {
-        info!("Downloading posts after {}", format_time(time));
+        info!(
+            "Downloading posts after {}",
+            color_stdout(&format_time(time))
+        );
     } else if let Some(time) = parameters.before {
-        info!("Downloading posts before {}", format_time(time));
+        info!(
+            "Downloading posts before {}",
+            color_stdout(&format_time(time))
+        );
     };
 
     let subreddits = mem::replace(&mut parameters.subreddits, Vec::new());

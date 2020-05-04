@@ -24,6 +24,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::Uri;
 use tokio::{fs, io};
 
+use crate::logger::{color_stderr, color_stdout};
 use crate::prelude::*;
 use crate::sites::{
     fetch, file_extension,
@@ -80,9 +81,9 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
         };
 
         info!(
-            "Started ripping {} to {:?}",
-            subreddit_name,
-            output.parent().unwrap()
+            "Started ripping {} to {}",
+            color_stdout(&subreddit_name),
+            color_stdout(&output.parent().unwrap().display())
         );
 
         loop {
@@ -97,7 +98,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
             for mut i in data {
                 if let Some(id) = i["id"].as_str() {
                     if parameters.update && Some(id) == newest_id.as_ref().map(|s| s.as_str()) {
-                        info!("Post with ID {:?} already exists", id);
+                        info!("Post {} already exists", color_stdout(&id));
                         run_jobs(&mut queue).await;
                         continue 'subreddit_loop;
                     };
@@ -119,7 +120,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
                     match url.parse::<Uri>() {
                         Ok(value) => value,
                         Err(e) => {
-                            warn!("Invalid URL {:?}: {}", url, e);
+                            warn!("Invalid URL {}: {}", color_stderr(&url), e);
                             continue;
                         }
                     }
@@ -172,8 +173,11 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
 async fn run_jobs(queue: &mut FuturesUnordered<impl Future<Output = (FetchJob<'_>, Result<()>)>>) {
     while let Some((job, result)) = queue.next().await {
         match result {
-            Ok(()) => info!("Saved {:?}", job.output.file_name().unwrap()),
-            Err(e) => warn!("Failed to retrieve {}:\n    {}", job.url, e),
+            Ok(()) => info!(
+                "Saved {}",
+                color_stdout(&Path::new(job.output.file_name().unwrap()).display())
+            ),
+            Err(e) => warn!("Failed to retrieve {}:\n    {}", color_stderr(&job.url), e),
         };
     }
 }

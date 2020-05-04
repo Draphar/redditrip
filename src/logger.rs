@@ -32,9 +32,31 @@ struct Logger {
     stderr_colors: bool,
 }
 
+impl Logger {
+    /// Returns whether colors are supported on the `stdout` stream.
+    pub fn supports_colors_stdout() -> bool {
+        log::logger().enabled(&Metadata::builder().target("stdout").build())
+    }
+
+    /// Returns whether colors are supported on the `stderr` stream.
+    pub fn supports_colors_stderr() -> bool {
+        log::logger().enabled(&Metadata::builder().target("stderr").build())
+    }
+}
+
 impl Log for Logger {
-    fn enabled(&self, _: &Metadata) -> bool {
-        true
+    fn enabled(&self, meta: &Metadata) -> bool {
+        // This function is abused to determine whether colors
+        // are enabled on a stream by using the `target` parameter
+        if meta.target() == "stdout" {
+            self.stdout_colors
+        } else if meta.target() == "stderr" {
+            self.stderr_colors
+        } else {
+            // `log` handles this automatically using
+            // the value provided with `set_max_level()`
+            true
+        }
     }
 
     fn log(&self, record: &Record) {
@@ -109,4 +131,38 @@ pub fn init(verbose: usize, stdout_colors: bool, stderr_colors: bool) {
             process::exit(1);
         }
     };
+}
+
+/// Colors a string, respecting whether colors are enabled on the `stdout` stream.
+pub fn color_stdout(input: &impl Display) -> Box<dyn Display> {
+    let input = format!("{}", input);
+    if cfg!(not(windows)) && Logger::supports_colors_stdout() {
+        Box::new(Color::Cyan.paint(input))
+    } else {
+        Box::new(input)
+    }
+}
+
+/// Colors a string, respecting whether colors are enabled on the `stderr` stream.
+pub fn color_stderr(input: &impl Display) -> Box<dyn Display> {
+    let input = format!("{}", input);
+    if cfg!(not(windows)) && Logger::supports_colors_stderr() {
+        Box::new(Color::Cyan.paint(input))
+    } else {
+        Box::new(input)
+    }
+}
+
+#[test]
+pub fn logger() {
+    init(1, false, true);
+
+    assert!(!Logger::supports_colors_stdout());
+    assert!(Logger::supports_colors_stderr());
+
+    assert_eq!("Lorem ipsum", color_stdout(&"Lorem ipsum").to_string());
+    assert_eq!(
+        Color::Cyan.paint("Lorem ipsum").to_string(),
+        color_stderr(&"Lorem ipsum").to_string()
+    );
 }
