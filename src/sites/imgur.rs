@@ -55,7 +55,7 @@ pub async fn fetch(client: &Client, url: &Uri, output: &Path) -> Result<()> {
 }
 
 /// An image on Imgur.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Eq, PartialEq)]
 struct Image {
     hash: String,
     ext: String,
@@ -182,4 +182,66 @@ async fn download_images(client: &Client, images: Vec<Image>, output: &Path) -> 
     // Todo: A future join could be of use here.
 
     Ok(())
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "__tests-network"), ignore)]
+async fn imgur_album() {
+    let client = Client::new();
+    let images = album(
+        &client,
+        &"https://imgur.com/a/dFz23".parse().unwrap(),
+        "".as_ref(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        vec![
+            Image {
+                hash: "bxv008g".to_string(),
+                ext: ".gif".to_string()
+            },
+            Image {
+                hash: "oXx9m52".to_string(),
+                ext: ".gif".to_string()
+            },
+            Image {
+                hash: "s3XOVHt".to_string(),
+                ext: ".png".to_string()
+            },
+            Image {
+                hash: "EanxY6r".to_string(),
+                ext: ".gif".to_string()
+            }
+        ],
+        images
+    );
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "__tests-network"), ignore)]
+async fn imgur_gallery() {
+    let client = Client::new();
+    let images = gallery(&client, "dFz23", "".as_ref()).await.unwrap();
+    assert_eq!(
+        vec![
+            Image {
+                hash: "bxv008g".to_string(),
+                ext: ".gif".to_string()
+            },
+            Image {
+                hash: "oXx9m52".to_string(),
+                ext: ".gif".to_string()
+            },
+            Image {
+                hash: "s3XOVHt".to_string(),
+                ext: ".png".to_string()
+            },
+            Image {
+                hash: "EanxY6r".to_string(),
+                ext: ".gif".to_string()
+            }
+        ],
+        images
+    );
 }

@@ -75,22 +75,10 @@ pub async fn fetch(
 ) -> Result<()> {
     trace!("fetch({:?}, {:?}, {:?})", url, output, gfycat_type);
 
-    // Gfycat URLs a fascinating thing. They occur
-    // as all-lowercase, well-formed, and with
-    // the title appended in the wild. This part
-    // tries to extract the Gfycat-ID, which can
-    // be used to retrieve the video directly
-    // without an API call if it is well-formed.
-
-    // Get the part between the initial `/` and the first `-`, if any.
-    let id = if let Some(index) = url.path().chars().position(|c| c == '-') {
-        &url.path()[1..index]
-    } else {
-        &url.path()[1..]
-    };
+    let (id, well_formed) = extract_id(url);
 
     // If the ID seems to be well-formed, use it directly.
-    if id.chars().any(|c| c.is_ascii_uppercase()) {
+    if well_formed {
         debug!("Trying to download directly from Gfycat {}", id);
 
         if fetch_giant(
@@ -114,6 +102,25 @@ pub async fn fetch(
     };
 
     api(client, id, output, gfycat_type).await
+}
+
+/// Extracts the Gfycat ID from the URL.
+fn extract_id(url: &Uri) -> (&str, bool) {
+    // Gfycat URLs a fascinating thing. They occur
+    // as all-lowercase, well-formed, and with
+    // the title appended in the wild. This part
+    // tries to extract the Gfycat-ID, which can
+    // be used to retrieve the video directly
+    // without an API call if it is well-formed.
+
+    // Get the part between the initial `/` and the first `-`, if any.
+    let id = if let Some(index) = url.path().chars().position(|c| c == '-') {
+        &url.path()[1..index]
+    } else {
+        &url.path()[1..]
+    };
+
+    (id, id.chars().any(|c| c.is_ascii_uppercase()))
 }
 
 /// Fetches a video from `giant.gfycat.com`.
@@ -168,4 +175,24 @@ async fn api(client: &Client, id: &str, output: &Path, gfycat_type: GfycatType) 
     fetch_giant(client, &url.parse()?, output).await?;
 
     Ok(())
+}
+
+#[test]
+fn gfycat_id() {
+    assert_eq!(
+        ("loremipsum", false),
+        extract_id(&"https://gfycat.com/loremipsum".parse().unwrap())
+    );
+    assert_eq!(
+        ("LoremIpsum", true),
+        extract_id(&"https://gfycat.com/LoremIpsum".parse().unwrap())
+    );
+    assert_eq!(
+        ("loremipsum", false),
+        extract_id(&"https://gfycat.com/loremipsum-some-text".parse().unwrap())
+    );
+    assert_eq!(
+        ("LoremIpsum", true),
+        extract_id(&"https://gfycat.com/LoremIpsum-some-text".parse().unwrap())
+    );
 }
