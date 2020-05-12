@@ -64,7 +64,7 @@ struct Image {
 /// Fetches Imgur albums and galleries.
 pub async fn fetch_album(client: &Client, url: &Uri, output: &Path) -> Result<()> {
     if url.path().starts_with("/a/") {
-        download_images(client, album(client, url, output).await?, output).await
+        download_images(client, album(client, url).await?, output).await
     } else if url.path().starts_with("/gallery/") {
         let mut id = url.path();
         // Remove trailing `/`
@@ -72,7 +72,7 @@ pub async fn fetch_album(client: &Client, url: &Uri, output: &Path) -> Result<()
             id = &id[..id.len() - 1];
         };
 
-        download_images(client, gallery(client, &id[9..], output).await?, output).await
+        download_images(client, gallery(client, &id[9..]).await?, output).await
     } else {
         // Just assume that a direct link was used without the
         // `i.` prefix. An `imgur.com/*` link redirects to
@@ -90,8 +90,8 @@ pub async fn fetch_album(client: &Client, url: &Uri, output: &Path) -> Result<()
 }
 
 /// Fetches an album using a HTML scraper.
-async fn album(client: &Client, url: &Uri, output: &Path) -> Result<Vec<Image>> {
-    trace!("album({:?}, {:?})", url, output);
+async fn album(client: &Client, url: &Uri) -> Result<Vec<Image>> {
+    trace!("album({:?})", url);
 
     let slash = &url.path()[3..].find('/').map(|n| n + 3);
     let id = &url.path()[3..slash.unwrap_or_else(|| url.path().len())];
@@ -131,8 +131,8 @@ async fn album(client: &Client, url: &Uri, output: &Path) -> Result<Vec<Image>> 
 }
 
 /// Extracts the images from a gallery using a JSON API.
-async fn gallery(client: &Client, id: &str, output: &Path) -> Result<Vec<Image>> {
-    trace!("gallery({:?}, {:?})", id, output);
+async fn gallery(client: &Client, id: &str) -> Result<Vec<Image>> {
+    trace!("gallery({:?})", id);
 
     let url = format!("https://imgur.com/gallery/{}.json", id);
     let response = client
@@ -188,13 +188,9 @@ async fn download_images(client: &Client, images: Vec<Image>, output: &Path) -> 
 #[cfg_attr(not(feature = "__tests-network"), ignore)]
 async fn imgur_album() {
     let client = Client::new();
-    let images = album(
-        &client,
-        &"https://imgur.com/a/dFz23".parse().unwrap(),
-        "".as_ref(),
-    )
-    .await
-    .unwrap();
+    let images = album(&client, &"https://imgur.com/a/dFz23".parse().unwrap())
+        .await
+        .unwrap();
     assert_eq!(
         vec![
             Image {
@@ -222,7 +218,7 @@ async fn imgur_album() {
 #[cfg_attr(not(feature = "__tests-network"), ignore)]
 async fn imgur_gallery() {
     let client = Client::new();
-    let images = gallery(&client, "dFz23", "".as_ref()).await.unwrap();
+    let images = gallery(&client, "dFz23").await.unwrap();
     assert_eq!(
         vec![
             Image {

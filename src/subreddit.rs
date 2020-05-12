@@ -27,9 +27,9 @@ use tokio::io;
 use crate::logger::{color_stderr, color_stdout};
 use crate::prelude::*;
 use crate::sites::{
-    fetch, FetchJob,
-    file_extension,
+    fetch, file_extension,
     pushshift::{self, Subreddit},
+    FetchJob,
 };
 
 const UPDATE_FILE_NAME: &'static str = ".redditrip";
