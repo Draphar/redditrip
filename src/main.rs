@@ -38,6 +38,9 @@ A versatile tool for downloading the linked contents of entire subreddits fast a
 - `--formatting-fields`
  Display the possible placeholders for the '--title' argument. Note that not all fields are set for every post.
 
+- `--no-parent`
+ Normally, a directory is created as a subdirectory of '--output'. This option causes the files to be placed directly within '--output'.
+
 - `-s`, `--selfposts`
  Download self posts as text files
 
@@ -52,8 +55,8 @@ A versatile tool for downloading the linked contents of entire subreddits fast a
 - `--before <date>`
  Only download posts before this date. The date should be formatted like 'YYYY-MM-DD', with an optionally appended time in the format 'HH:MM:SS', or a UNIX timestamp with second precision.
 
-- `-b`, `--batch-size <size>`
- A number between 1 and 1000 that specifies the number of simultaneous download jobs. A higher number eats more resources, but is more efficient. [default: 250]
+ `-b`, `--queue-size <size>`
+ A number between 1 and 1000 that specifies the number of simultaneous download jobs. A higher number eats more resources, but is faster. [default: 16]
 
 - `-C`, `--color <'auto'|'always'|'never'>`
  Enable colored output [default: auto]  [possible values: always, auto, never]
@@ -221,6 +224,16 @@ pub struct Parameters {
     update: bool,
 
     #[structopt(
+        long,
+        help = "Do not create a subdirectory",
+        long_help = "\
+            Normally, a directory is created as a subdirectory of '--output'. \
+            This option causes the files to be placed directly within '--output'. \
+        "
+    )]
+    no_parent: bool,
+
+    #[structopt(
         long, parse(try_from_str = parse_date), value_name = "date",
         help = "Filter for posts after this date",
         long_help = "\
@@ -251,7 +264,7 @@ pub struct Parameters {
         help = "The number of simultaneous downloads",
         long_help = "\
             A number between 1 and 1000 that specifies the number of simultaneous \
-            download jobs. A higher number eats more resources, but is more efficient. \
+            download jobs. A higher number eats more resources, but is faster. \
         "
     )]
     queue_size: usize,

@@ -59,7 +59,9 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
         );
 
         let mut output = parameters.output.to_owned();
-        output.push(subreddit.to_path());
+        if !parameters.no_parent {
+            output.push(subreddit.to_path());
+        };
         if let Err(e) = fs::create_dir_all(&output) {
             error!("Failed to create directory: {}", e);
             process::exit(1);
