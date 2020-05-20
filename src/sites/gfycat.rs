@@ -15,13 +15,15 @@
  */
 
 /*!
-Support for [Gfycat](https://gfycat.com/) downloads.
+Support for [Gfycat](https://gfycat.com/) and [Redgifs](https://redgifs.com/) downloads.
 
 # Domains
 
 - `gfycat.com`
 - `thumbs.gfycat.com`
 - `giant.gfycat.com`
+- `redgifs.com`
+- `thumbs1.redgifs.com`
 */
 
 use std::path::Path;
@@ -39,6 +41,16 @@ pub enum GfycatType {
 
     /// Use `webm` videos.
     Webm,
+}
+
+impl GfycatType {
+    #[inline]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GfycatType::Mp4 => "mp4",
+            GfycatType::Webm => "webm",
+        }
+    }
 }
 
 impl<'a> From<&'a str> for GfycatType {
@@ -67,7 +79,7 @@ struct GfyItem {
 }
 
 /// Fetches a video from `gfycat.com`.
-pub async fn fetch(
+pub async fn fetch_gfycat(
     client: &Client,
     url: &Uri,
     output: &Path,
@@ -75,37 +87,63 @@ pub async fn fetch(
 ) -> Result<()> {
     trace!("fetch({:?}, {:?}, {:?})", url, output, gfycat_type);
 
-    let (id, well_formed) = extract_id(url);
+    let (id, well_formed) = extract_id(url.path());
 
     // If the ID seems to be well-formed, use it directly.
     if well_formed {
         debug!("Trying to download directly from Gfycat {}", id);
 
-        if fetch_giant(
-            client,
-            &format!(
-                "https://giant.gfycat.com/{}.{}",
-                id,
-                match gfycat_type {
-                    GfycatType::Mp4 => "mp4",
-                    GfycatType::Webm => "webm",
-                }
-            )
-            .parse()?,
-            output,
-        )
-        .await
-        .is_ok()
-        {
+        let url = format!("https://giant.gfycat.com/{}.{}", id, gfycat_type.as_str());
+
+        if fetch_giant(client, &url.parse()?, output).await.is_ok() {
             return Ok(());
         };
     };
 
-    api(client, id, output, gfycat_type).await
+    let mut url = String::from("https://api.gfycat.com/v1/gfycats/");
+    url += id;
+
+    api(client, &url, output, gfycat_type).await
+}
+
+/// Fetches a video from `redgifs.com`.
+pub async fn fetch_redgifs(
+    client: &Client,
+    url: &Uri,
+    output: &Path,
+    gfycat_type: GfycatType,
+) -> Result<()> {
+    trace!("fetch({:?}, {:?}, {:?})", url, output, gfycat_type);
+
+    let (id, well_formed) = extract_id(
+        url.path()
+            .get(6..) // Cut off the `/watch`
+            .ok_or_else(|| Error::new("Malformed URL"))?,
+    );
+
+    // If the ID seems to be well-formed, use it directly.
+    if well_formed {
+        debug!("Trying to download directly from Redgifs {}", id);
+
+        let url = format!(
+            "https://thumbs1.redgifs.com/{}.{}",
+            id,
+            gfycat_type.as_str()
+        );
+
+        if fetch_giant(client, &url.parse()?, output).await.is_ok() {
+            return Ok(());
+        };
+    };
+
+    let mut url = String::from("https://api.redgifs.com/v1/gfycats/");
+    url += id;
+
+    api(client, &url, output, gfycat_type).await
 }
 
 /// Extracts the Gfycat ID from the URL.
-fn extract_id(url: &Uri) -> (&str, bool) {
+fn extract_id(url: &str) -> (&str, bool) {
     // Gfycat URLs a fascinating thing. They occur
     // as all-lowercase, well-formed, and with
     // the title appended in the wild. This part
@@ -114,10 +152,10 @@ fn extract_id(url: &Uri) -> (&str, bool) {
     // without an API call if it is well-formed.
 
     // Get the part between the initial `/` and the first `-`, if any.
-    let id = if let Some(index) = url.path().chars().position(|c| c == '-') {
-        &url.path()[1..index]
+    let id = if let Some(index) = url.chars().position(|c| c == '-') {
+        &url[1..index]
     } else {
-        &url.path()[1..]
+        &url[1..]
     };
 
     (id, id.chars().any(|c| c.is_ascii_uppercase()))
@@ -140,18 +178,15 @@ pub async fn fetch_thumbs(client: &Client, url: &Uri, output: &Path) -> Result<(
 /// Use the Gfycat API to retrieve the download link.
 /// Rate limits may be encountered because an API
 /// key is required to thoroughly use the API.
-async fn api(client: &Client, id: &str, output: &Path, gfycat_type: GfycatType) -> Result<()> {
-    trace!("api({:?}, {:?}, {:?})", id, output, gfycat_type);
-    debug!("Querying Gfycat api about {}", id);
-
-    let mut url = String::from("https://api.gfycat.com/v1/gfycats/");
-    url += id;
+async fn api(client: &Client, url: &str, output: &Path, gfycat_type: GfycatType) -> Result<()> {
+    trace!("api({:?}, {:?}, {:?})", url, output, gfycat_type);
+    debug!("Querying Gfycat api about {}", url);
 
     let response = client
         .request(
             Builder::new()
                 .method(Method::GET)
-                .uri(&url)
+                .uri(url)
                 .header("Accept", "application/json"),
         )
         .await?;
@@ -179,20 +214,8 @@ async fn api(client: &Client, id: &str, output: &Path, gfycat_type: GfycatType) 
 
 #[test]
 fn gfycat_id() {
-    assert_eq!(
-        ("loremipsum", false),
-        extract_id(&"https://gfycat.com/loremipsum".parse().unwrap())
-    );
-    assert_eq!(
-        ("LoremIpsum", true),
-        extract_id(&"https://gfycat.com/LoremIpsum".parse().unwrap())
-    );
-    assert_eq!(
-        ("loremipsum", false),
-        extract_id(&"https://gfycat.com/loremipsum-some-text".parse().unwrap())
-    );
-    assert_eq!(
-        ("LoremIpsum", true),
-        extract_id(&"https://gfycat.com/LoremIpsum-some-text".parse().unwrap())
-    );
+    assert_eq!(("loremipsum", false), extract_id("/loremipsum"));
+    assert_eq!(("LoremIpsum", true), extract_id("/LoremIpsum"));
+    assert_eq!(("loremipsum", false), extract_id("/loremipsum-some-text"));
+    assert_eq!(("LoremIpsum", true), extract_id("/LoremIpsum-some-text"));
 }

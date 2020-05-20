@@ -104,7 +104,16 @@ pub async fn fetch(config: FetchJob<'_>) -> (FetchJob<'_>, Result<()>) {
             "i.imgur.com" => imgur::fetch(config.client, &config.url, &config.output).await,
             "imgur.com" => imgur::fetch_album(config.client, &config.url, &config.output).await,
             "gfycat.com" => {
-                gfycat::fetch(
+                gfycat::fetch_gfycat(
+                    config.client,
+                    &config.url,
+                    &config.output,
+                    config.parameters.gfycat_type,
+                )
+                .await
+            }
+            "redgifs.com" => {
+                gfycat::fetch_redgifs(
                     config.client,
                     &config.url,
                     &config.output,
@@ -115,7 +124,7 @@ pub async fn fetch(config: FetchJob<'_>) -> (FetchJob<'_>, Result<()>) {
             "giant.gfycat.com" => {
                 gfycat::fetch_giant(config.client, &config.url, &config.output).await
             }
-            "thumbs.gfycat.com" => {
+            "thumbs.gfycat.com" | "thumbs1.redgifs.com" => {
                 gfycat::fetch_thumbs(config.client, &config.url, &config.output).await
             }
             "i.pinimg.com" => pinterest::fetch(config.client, &config.url, &config.output).await,
@@ -184,6 +193,8 @@ imgur.com
 gfycat.com
 thumbs.gfycat.com
 giant.gfycat.com
+redgifs.com
+thumbs1.redgifs.com
 i.pinimg.com
 i.postimg.cc\
     "
