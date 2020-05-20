@@ -244,16 +244,17 @@ pub struct Parameters {
 
     #[structopt(
         long,
-        short,
-        default_value = "250",
+        short = "b",
+        default_value = "16",
         value_name = "size",
+        alias = "batch-size",
         help = "The number of simultaneous downloads",
         long_help = "\
             A number between 1 and 1000 that specifies the number of simultaneous \
             download jobs. A higher number eats more resources, but is more efficient. \
         "
     )]
-    batch_size: usize,
+    queue_size: usize,
 
     #[structopt(
         name = "SUBREDDITS", parse(try_from_str = parse_input),

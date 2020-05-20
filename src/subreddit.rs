@@ -18,7 +18,7 @@
 Fetches posts from a subreddit.
 */
 
-use std::{env, fs, future::Future, io::ErrorKind, path::Path, process};
+use std::{env, fs, io::ErrorKind, path::Path, process};
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::Uri;
@@ -45,7 +45,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
 
     temp_dir.push("index"); // overwritten later by `with_file_name()`
 
-    'subreddit_loop: for subreddit in subreddits {
+    for subreddit in subreddits {
         let subreddit_name = subreddit.to_string();
         let mut before = parameters.before;
         let mut updated = false;
@@ -86,11 +86,11 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
             color_stdout(&output.parent().unwrap().display())
         );
 
-        loop {
+        'chunks: loop {
             let data = pushshift::api(&client, &api_url, &mut before).await?;
 
             if data.is_empty() {
-                continue 'subreddit_loop;
+                break;
             };
 
             debug!("Read {} posts from {}", data.len(), subreddit_name);
@@ -99,8 +99,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
                 if let Some(id) = i["id"].as_str() {
                     if parameters.update && Some(id) == newest_id.as_ref().map(|s| s.as_str()) {
                         info!("Post {} already exists", color_stdout(&id));
-                        run_jobs(&mut queue).await;
-                        continue 'subreddit_loop;
+                        break 'chunks;
                     };
 
                     if !updated {
@@ -149,6 +148,13 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
                     }
                 };
 
+                if queue.len() == parameters.queue_size {
+                    // Run one job to completion
+                    if let Some(output) = queue.next().await {
+                        evaluate_job(output);
+                    };
+                };
+
                 queue.push(fetch(FetchJob {
                     client: &client,
                     parameters: &parameters,
@@ -161,25 +167,27 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
                     media: post.secure_media,
                 }));
             }
+        }
 
-            run_jobs(&mut queue).await;
+        // Run the remaining jobs
+        while let Some(i) = queue.next().await {
+            evaluate_job(i);
         }
     }
 
     Ok(())
 }
 
-/// Runs the job queue to completion.
-async fn run_jobs(queue: &mut FuturesUnordered<impl Future<Output = (FetchJob<'_>, Result<()>)>>) {
-    while let Some((job, result)) = queue.next().await {
-        match result {
-            Ok(()) => info!(
-                "Saved {}",
-                color_stdout(&Path::new(job.output.file_name().unwrap()).display())
-            ),
-            Err(e) => warn!("Failed to retrieve {}:\n    {}", color_stderr(&job.url), e),
-        };
-    }
+/// Handles the job output.
+fn evaluate_job(output: (FetchJob<'_>, Result<()>)) {
+    let (job, result) = output;
+    match result {
+        Ok(()) => info!(
+            "Saved {}",
+            color_stdout(&Path::new(job.output.file_name().unwrap()).display())
+        ),
+        Err(e) => warn!("Failed to retrieve {}:\n    {}", color_stderr(&job.url), e),
+    };
 }
 
 /// Returns the most recent post ID from a marker file in the directory.

@@ -90,7 +90,7 @@ pub struct RedditVideo {
 pub fn build_api_url(parameters: &Parameters) -> String {
     format!(
         "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields={fields:}{selfposts:}{domains:}{after:}",
-        size = parameters.batch_size,
+        size = parameters.queue_size,
         fields = {
             let mut fields = String::from("id,created_utc,domain,url,secure_media,is_self");
             for i in parameters.title.iter() {
@@ -184,23 +184,27 @@ fn test_build_api_url() {
     use structopt::StructOpt;
 
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false",
         build_api_url(&Parameters::from_iter(&["test"]))
+    );
+    assert_eq!(
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=id,created_utc,domain,url,secure_media,is_self,id,title,selftext",
+        build_api_url(&Parameters::from_iter(&["test", "--queue-size", "0", "--selfposts"]))
     );
     assert_eq!(
         "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=id,created_utc,domain,url,secure_media,is_self,id,title,selftext",
         build_api_url(&Parameters::from_iter(&["test", "--batch-size", "0", "--selfposts"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&domain=!domain1,!domain2",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&domain=!domain1,!domain2",
         build_api_url(&Parameters::from_iter(&["test", "--exclude", "domain1", "--exclude", "domain2"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&after=946684800",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&after=946684800",
         build_api_url(&Parameters::from_iter(&["test", "--after", "2000-1-1"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=250&fields=id,created_utc,domain,url,secure_media,is_self,author,full_link,id&is_self=false",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,author,full_link,id&is_self=false",
         build_api_url(&Parameters::from_iter(&["test", "--title", "{id}{author}{full_link}"]))
     );
 }
