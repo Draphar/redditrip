@@ -145,6 +145,8 @@ async fn ffmpeg(
         .arg(&video_path)
         .arg("-i")
         .arg(&audio_path)
+        .arg("-c")
+        .arg("copy")
         .arg(&output)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
