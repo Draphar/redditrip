@@ -51,7 +51,7 @@ The following arguments can optionally be used:
 
 - `--selfposts`/`-s`: Download self posts as text files.
 
-- `--exclude <domain>`/`-e <domain>`: Prevents downloading from a domain.
+- `--allow <domain>`/`--exclude <domain>`: Allows only or prevents downloading from a domain, respectively. Multiple values are supported.
 
 - `--title <formatter>`: Use a custom title format.
 

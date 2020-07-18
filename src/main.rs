@@ -52,6 +52,9 @@ A versatile tool for downloading the linked contents of entire subreddits fast a
 - `--after <date>`
  Only download posts after this date. The date should be formatted like 'YYYY-MM-DD', with an optionally appended time in the format 'HH:MM:SS', or a UNIX timestamp with second precision.
 
+-- `allow <domain>`
+ Only allows downloading from a domain. It is practical to use brace expansion syntax for this argument: `--allow={"i.redd.it","i.imgur.com"}`.
+
 - `--before <date>`
  Only download posts before this date. The date should be formatted like 'YYYY-MM-DD', with an optionally appended time in the format 'HH:MM:SS', or a UNIX timestamp with second precision.
 
@@ -283,6 +286,16 @@ pub struct Parameters {
     selfposts: bool,
 
     #[structopt(
+        long, parse(try_from_str = parse_domains), multiple = true, value_name = "domain", conflicts_with("exclude"),
+        help = "Only download from the domain",
+        long_help = "\
+            Only allows downloading from a domain. It is practical to use brace \
+            expansion syntax for this argument: '--allow={\"i.redd.it\",\"i.imgur.com\"}'.\
+        "
+    )]
+    allow: Option<Vec<String>>,
+
+    #[structopt(
         short, long, parse(try_from_str = parse_domains), multiple = true, value_name = "domain",
         help = "Do not download from the domain",
         long_help = "\
@@ -290,7 +303,7 @@ pub struct Parameters {
             expansion syntax for this argument: '--exclude={\"i.redd.it\",\"i.imgur.com\"}'.\
         "
     )]
-    exclude: Vec<String>,
+    exclude: Option<Vec<String>>,
 
     #[structopt(
         long, parse(from_str), possible_values = &["mp4", "webm"], default_value = "mp4", value_name = "type",

@@ -43,6 +43,8 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
     let mut queue = FuturesUnordered::new();
     let api_url = pushshift::build_api_url(&parameters);
 
+    debug!("The initial API url is `{}`", api_url);
+
     temp_dir.push("index"); // overwritten later by `with_file_name()`
 
     for subreddit in subreddits {

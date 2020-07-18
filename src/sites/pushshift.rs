@@ -104,10 +104,17 @@ pub fn build_api_url(parameters: &Parameters) -> String {
         } else {
             "&is_self=false"
         },
-        domains = if parameters.exclude.is_empty() {
-            String::new()
-        } else {
-            parameters.exclude.iter().enumerate().fold(String::from("&domain="), |mut accumulator,(i, domain)| {
+        domains = if let Some(ref allowed_domains) = parameters.allow {
+            allowed_domains.iter().enumerate().fold(String::from("&domain="), |mut accumulator,(i, domain)| {
+                if i != 0 {
+                    accumulator.push(',');
+                };
+                accumulator.push_str(domain);
+
+                accumulator
+            })
+        } else if let Some(ref exluded_domains) = parameters.exclude {
+            exluded_domains.iter().enumerate().fold(String::from("&domain="), |mut accumulator,(i, domain)| {
                 if i != 0 {
                     accumulator.push(',');
                 };
@@ -116,6 +123,8 @@ pub fn build_api_url(parameters: &Parameters) -> String {
 
                 accumulator
             })
+        } else {
+            String::new()
         },
         after = match parameters.after {
             Some(time) => format!("&after={}", time),
@@ -194,6 +203,10 @@ fn test_build_api_url() {
     assert_eq!(
         "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=id,created_utc,domain,url,secure_media,is_self,id,title,selftext",
         build_api_url(&Parameters::from_iter(&["test", "--batch-size", "0", "--selfposts"]))
+    );
+    assert_eq!(
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&domain=domain1,domain2",
+        build_api_url(&Parameters::from_iter(&["test", "--allow", "domain1", "--allow", "domain2"]))
     );
     assert_eq!(
         "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&domain=!domain1,!domain2",
