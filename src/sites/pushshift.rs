@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Joshua Prieth
+ * Copyright 2020 Draphar
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ Utilities for retrieving data from the Pushshift API.
 
 use serde::Deserialize;
 use serde_json::Value;
+
+use std::collections::HashMap;
 
 use crate::prelude::*;
 
@@ -68,6 +70,7 @@ pub struct Post {
     pub domain: String,
     pub secure_media: Option<SecureMedia>,
     pub selftext: Option<String>,
+    pub media_metadata: Option<HashMap<String, GalleryItem>>,
 }
 
 /// An optional part of a post on reddit.
@@ -86,13 +89,30 @@ pub struct RedditVideo {
     pub height: u64,
 }
 
+/// Data of a reddit image gallery.
+///
+/// Created from the `media_metadata` JSON
+/// object that is returned by the reddit API.
+pub type Gallery = HashMap<String, GalleryItem>;
+
+/// An item within a gallery.
+///
+/// Pushshift can also return none of these types and merely `status: failed` instead.
+#[derive(Deserialize, Debug)]
+pub struct GalleryItem {
+    pub e: Option<String>,
+    pub id: Option<String>,
+    pub m: Option<String>,
+    pub status: String,
+}
+
 /// Creates an URL for the Pushshift API which can later be reused.
 pub fn build_api_url(parameters: &Parameters) -> String {
     format!(
         "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size={size:}&fields={fields:}{selfposts:}{domains:}{after:}",
         size = parameters.queue_size,
         fields = {
-            let mut fields = String::from("id,created_utc,domain,url,secure_media,is_self");
+            let mut fields = String::from("id,created_utc,domain,url,media_metadata,secure_media,is_self");
             for i in parameters.title.iter() {
                 fields.push(',');
                 fields.push_str(i);
@@ -193,31 +213,31 @@ fn test_build_api_url() {
     use structopt::StructOpt;
 
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,media_metadata,secure_media,is_self,id,title&is_self=false",
         build_api_url(&Parameters::from_iter(&["test"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=id,created_utc,domain,url,secure_media,is_self,id,title,selftext",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=id,created_utc,domain,url,media_metadata,secure_media,is_self,id,title,selftext",
         build_api_url(&Parameters::from_iter(&["test", "--queue-size", "0", "--selfposts"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=id,created_utc,domain,url,secure_media,is_self,id,title,selftext",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=0&fields=id,created_utc,domain,url,media_metadata,secure_media,is_self,id,title,selftext",
         build_api_url(&Parameters::from_iter(&["test", "--batch-size", "0", "--selfposts"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&domain=domain1,domain2",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,media_metadata,secure_media,is_self,id,title&is_self=false&domain=domain1,domain2",
         build_api_url(&Parameters::from_iter(&["test", "--allow", "domain1", "--allow", "domain2"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&domain=!domain1,!domain2",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,media_metadata,secure_media,is_self,id,title&is_self=false&domain=!domain1,!domain2",
         build_api_url(&Parameters::from_iter(&["test", "--exclude", "domain1", "--exclude", "domain2"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,id,title&is_self=false&after=946684800",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,media_metadata,secure_media,is_self,id,title&is_self=false&after=946684800",
         build_api_url(&Parameters::from_iter(&["test", "--after", "2000-1-1"]))
     );
     assert_eq!(
-        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,secure_media,is_self,author,full_link,id&is_self=false",
+        "https://api.pushshift.io/reddit/search/submission?sort_type=created_utc&sort=desc&size=16&fields=id,created_utc,domain,url,media_metadata,secure_media,is_self,author,full_link,id&is_self=false",
         build_api_url(&Parameters::from_iter(&["test", "--title", "{id}{author}{full_link}"]))
     );
 }

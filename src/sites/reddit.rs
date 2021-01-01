@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Joshua Prieth
+ * Copyright 2020 Draphar
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ use std::process::Stdio;
 use tokio::{fs, process::Command};
 
 use crate::prelude::*;
-use crate::sites::pushshift::SecureMedia;
+use crate::sites::pushshift::{Gallery, SecureMedia};
 use std::io::ErrorKind;
 
 /// Specifies how videos from `v.redd.it` are downloaded.
@@ -62,6 +62,56 @@ pub async fn fetch_image(client: &Client, url: &Uri, output: &Path) -> Result<()
     trace!("fetch({:?}, {:?})", url, output);
 
     download(client, url, output).await
+}
+
+/// Fetches images from a reddit gallery.
+pub async fn fetch_gallery(
+    client: &Client,
+    url: &Uri,
+    output: &Path,
+    gallery: &Gallery,
+) -> Result<()> {
+    trace!("fetch_gallery({}, {:?})", url, output);
+
+    fs::create_dir_all(output).await?;
+    let mut path = output.to_path_buf();
+    path.push("index"); // later overwritten
+
+    for (name, item) in gallery {
+        if item.status == "failed" {
+            warn!("File {:?} from gallery not available", name);
+        } else {
+            let r#type = item.e.as_ref().unwrap();
+
+            if r#type == "Image" {
+                let id = item.id.as_ref().unwrap();
+                let extension = match item.m.as_ref().unwrap().as_ref() {
+                    "image/jpg" => "jpg",
+                    "image/png" => "png",
+                    "image/webp" => "webp",
+                    _ => "",
+                };
+
+                debug!(
+                    "Saving individual image \"{}.{}\" from gallery",
+                    id, extension
+                );
+
+                let path = path.with_file_name(format!("{}.{}", id, extension));
+
+                download(
+                    client,
+                    &format!("https://i.redd.it/{}.{}", id, extension).parse()?,
+                    &path,
+                )
+                .await; // ignore individual errors
+            } else {
+                warn!("The gallery item type {:?} is not supported", r#type);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Fetches a video from `v.redd.it`.

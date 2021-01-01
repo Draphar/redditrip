@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Joshua Prieth
+ * Copyright 2020 Draphar
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ use tokio::{fs::File, io::AsyncWriteExt};
 use gfycat::GfycatType;
 
 use crate::prelude::*;
-use crate::sites::pushshift::SecureMedia;
+use crate::sites::pushshift::{Gallery, SecureMedia};
 
 pub mod gfycat;
 pub mod imgur;
@@ -65,6 +65,9 @@ pub struct FetchJob<'a> {
     /// The text of the post if it is a self post.
     pub text: Option<String>,
 
+    /// The gallery data if the post is an image gallery.
+    pub gallery: Option<Gallery>,
+
     /// The `secure_media` property if the item is a `v.redd.it` video.
     pub media: Option<SecureMedia>,
 }
@@ -100,6 +103,14 @@ pub async fn fetch(config: FetchJob<'_>) -> (FetchJob<'_>, Result<()>) {
                     &config.media,
                 )
                 .await
+            }
+            "reddit.com" => {
+                if let Some(ref gallery) = config.gallery {
+                    reddit::fetch_gallery(config.client, &config.url, &config.output, gallery).await
+                } else {
+                    // This normally indicates a selfpost
+                    Ok(())
+                }
             }
             "i.imgur.com" => imgur::fetch(config.client, &config.url, &config.output).await,
             "imgur.com" => imgur::fetch_album(config.client, &config.url, &config.output).await,
@@ -158,6 +169,10 @@ pub fn file_extension(url: &Uri, gfycat_type: GfycatType, is_selfpost: bool) -> 
         return Some(".txt");
     };
 
+    if url.host() == Some("reddit.com") {
+        return Some("");
+    }
+
     if url.host() == Some("v.redd.it") {
         return Some(".mp4");
     };
@@ -188,6 +203,7 @@ pub fn supported_domains() -> &'static str {
     "\
 i.redd.it
 v.redd.it
+reddit.com
 i.imgur.com
 imgur.com
 gfycat.com

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Joshua Prieth
+ * Copyright 2020 Draphar
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -154,7 +154,6 @@ mod prelude {
 #[derive(Debug, StructOpt)]
 #[structopt(
     name = "redditrip",
-    author = "Made by Joshua Prieth, licensed under the Apache-2.0 license.",
     long_about = "\
         A versatile tool for downloading the linked contents of entire subreddits fast and efficiently. \
         Run `cargo install redditrip --force` to update. \

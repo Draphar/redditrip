@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Joshua Prieth
+ * Copyright 2020 Draphar
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -168,6 +168,7 @@ pub async fn rip(parameters: Parameters, subreddits: Vec<Subreddit>) -> Result<(
                     output: output.with_file_name(title),
                     temp_dir: &temp_dir,
                     text: post.selftext,
+                    gallery: post.media_metadata,
                     media: post.secure_media,
                 }));
             }
